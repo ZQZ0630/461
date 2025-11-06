@@ -1,0 +1,111 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>STAT461 Mobile Patcher (Offline)</title>
+<style>
+  body{font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:40px;max-width:860px}
+  h1{font-size:22px;margin:0 0 16px}
+  .card{border:1px solid #e5e7eb;border-radius:12px;padding:18px}
+  button,input[type=file]{font:inherit}
+  .ok{color:#065f46}
+  .err{color:#991b1b}
+  code{background:#f6f7f9;padding:2px 6px;border-radius:6px}
+</style>
+<h1>STAT461 Mobile Patcher</h1>
+<div class="card">
+  <p>选择你的原文件（<code>STAT461 Bronian Motion.html</code>）。本工具会离线注入移动端 CSS+JS，并自动下载 <code>STAT461_Bronian_Motion_mobile.html</code>。</p>
+  <input id="file" type="file" accept=".html,.htm">
+  <button id="go">生成手机版</button>
+  <p id="msg"></p>
+</div>
+<script>
+const cssPatch = `
+<!-- MOBILE PATCH: responsive layout & touch-friendly sizing -->
+<style>
+@media (max-width: 480px){
+  :root{--pad:12px}
+  body{-webkit-text-size-adjust:100%}
+  .landing{padding:var(--pad)}
+  .landing-header h1{font-size:clamp(22px,6vw,28px)}
+  .landing-header .subtitle{font-size:.95rem}
+  .module-header{padding:1.25rem var(--pad) 1rem}
+  .main-content{padding:var(--pad)}
+  .controls-panel,.panel{padding:1rem}
+  .controls-row{grid-template-columns:1fr!important;gap:.75rem}
+  .control-label{font-size:.9rem}
+  input[type=number],select{padding:.6rem;font-size:.95rem}
+  .back-button{top:max(.75rem,env(safe-area-inset-top));left:max(.75rem,env(safe-area-inset-left));padding:.6rem .9rem;font-size:.95rem}
+  .stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+  .stat-value{font-size:1rem}
+}
+:root{--plot-h:clamp(260px,42vh,520px);--plot-h-wide:clamp(240px,58vh,560px)}
+#walk-paths-plot,#walk-dist-plot,#cont-paths-plot,#cont-dist-plot,#bridge-plot{height:var(--plot-h)}
+@media (orientation:landscape){
+  #walk-paths-plot,#walk-dist-plot,#cont-paths-plot,#cont-dist-plot,#bridge-plot{height:var(--plot-h-wide)}
+}
+@media (max-width:480px){
+  .split-view{gap:1rem!important}
+  .panel-title{font-size:1.05rem}
+  .slice-pill{padding:.45rem .7rem;font-size:.85rem}
+}
+@media (hover:none){
+  .btn{min-height:44px}
+  .slice-pill{min-height:36px}
+}
+</style>
+`;
+
+const jsPatch = `
+<!-- MOBILE PATCH: Plotly resizing & small-screen defaults -->
+<script>
+(function(){
+  const isSmall = Math.min(window.innerWidth, window.innerHeight) < 520;
+  if(isSmall){
+    const wp=document.getElementById('walk-paths'); if(wp && +wp.value>12) wp.value=12;
+    const ws=document.getElementById('walk-steps'); if(ws && +ws.value>600) ws.value=600;
+    const wv=document.getElementById('walk-speed'); if(wv && +wv.value<8){ wv.value=8; var wsv=document.getElementById('walk-speed-val'); if(wsv) wsv.textContent=8; }
+    const cp=document.getElementById('cont-paths'); if(cp && +cp.value>16) cp.value=16;
+    const cs=document.getElementById('cont-steps'); if(cs && +cs.value>600) cs.value=600;
+    const cv=document.getElementById('cont-speed'); if(cv && +cv.value<8){ cv.value=8; var csv=document.getElementById('cont-speed-val'); if(csv) csv.textContent=8; }
+  }
+  const ids=['walk-paths-plot','walk-dist-plot','cont-paths-plot','cont-dist-plot','bridge-plot'];
+  function resizeAll(){
+    ids.forEach(id=>{
+      const gd=document.getElementById(id);
+      if(gd && gd.data){ try{ Plotly.Plots.resize(gd); }catch(e){} }
+    });
+  }
+  window.addEventListener('load', resizeAll, {passive:true});
+  window.addEventListener('orientationchange', ()=>setTimeout(resizeAll,300), {passive:true});
+  window.addEventListener('resize', ()=>{ if(!document.hidden) resizeAll(); }, {passive:true});
+})();
+</script>
+`;
+
+function inject(html, snippet, tag){
+  const re = new RegExp(`</${tag}\\s*>`,'i');
+  const m = html.match(re);
+  return m ? html.replace(re, snippet + m[0]) : (html + "\n" + snippet);
+}
+
+document.getElementById('go').onclick = async () => {
+  const f = document.getElementById('file').files[0];
+  const msg = document.getElementById('msg');
+  msg.className = ''; msg.textContent = '';
+  if(!f){ msg.textContent='请选择原始 HTML 文件'; msg.className='err'; return; }
+  try{
+    const text = await f.text();
+    let patched = inject(text, cssPatch, 'head');
+    patched = inject(patched, jsPatch, 'body');
+    const blob = new Blob([patched], {type:'text/html;charset=utf-8'});
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: 'STAT461_Bronian_Motion_mobile.html'
+    });
+    document.body.appendChild(a); a.click(); a.remove();
+    msg.textContent = '生成完成，已开始下载：STAT461_Bronian_Motion_mobile.html'; msg.className='ok';
+  }catch(e){
+    console.error(e);
+    msg.textContent = '出错了：' + e.message; msg.className='err';
+  }
+};
+</script>
